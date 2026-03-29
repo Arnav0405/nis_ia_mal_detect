@@ -1,0 +1,45 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment
+.env 
+.env.local
+.env.*.local
+
+# Build & Dist
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+temp_*/
+temp_bytes/
+temp_reports/
+temp_uploads/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+# Thumbs.db
+
+# Project specific
+# stored_reports/
+# trace.log
+# normal_trace.log
+# saved_w.model
