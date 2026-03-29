@@ -103,6 +103,8 @@ def generate_report(data, output_path):
         # File Analysis Results
         for scan_type, scan_results in file_results.items():
             if scan_type != 'malwareClassification':
+                if not isinstance(scan_results, dict):
+                    continue
                 elements.append(Paragraph(f"{scan_type.upper()} Analysis", styles['Heading3']))
                 
                 # Basic file info table

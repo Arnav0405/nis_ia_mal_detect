@@ -88,7 +88,17 @@ def scan(
     if save_report:
         fname = f"security_report_{int(time.time())}.pdf"
         report_path = STORED_REPORTS / fname
-        generate_report({"files": {file.name: combined}}, str(report_path))
+
+        # Report generator expects each scan entry to be a dict of analysis sections.
+        report_sections = {
+            "original": result_orig if isinstance(result_orig, dict) else {"error": "original analysis unavailable"},
+            "bytes": result_bytes if isinstance(result_bytes, dict) else {"error": "bytes analysis unavailable"},
+        }
+
+        if isinstance(result_orig, dict) and "malwareClassification" in result_orig:
+            report_sections["malwareClassification"] = result_orig["malwareClassification"]
+
+        generate_report({"files": {file.name: report_sections}}, str(report_path))
         combined["report_path"] = str(report_path)
 
     history_file = _store_scan_history(combined)

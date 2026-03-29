@@ -9,6 +9,9 @@ from typing import Dict, Any, List, Optional
 import time
 import logging
 import gradio as gr
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,7 +49,7 @@ class StaticAnalyzer:
         self.yara_rules = self._load_yara_rules(yara_rules_path) if yara else None
         self.string_min_length = 4
         self._cache = {}
-        self.vt_api_key = vt_api_key or os.getenv('VT_API_KEY', "4287be04b25096bd0648f042e523d23da719c713c26f6e50015b6fd9fa98b44e")
+        self.vt_api_key = vt_api_key or os.getenv('VT_API_KEY')
         
     def _init_magic(self):
         """Initialize magic with fallback"""

@@ -17,6 +17,9 @@ from scripts.sys_log_analysis import process_log_file
 import subprocess
 import shutil
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Increase timeout and enable debug logging
 app = Flask(__name__)
@@ -26,8 +29,8 @@ UPLOAD_FOLDER = 'temp_uploads'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# Initialize Groq client with specific API key
-groq_client = Groq(api_key="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")
+# Initialize Groq client from environment
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # Create required directories
 REQUIRED_DIRS = ['temp_uploads', 'temp_bytes', 'temp_reports', 'stored_reports']

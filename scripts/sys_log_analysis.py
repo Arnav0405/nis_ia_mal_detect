@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import logging
 from retry import retry
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Update logging configuration to use local path
 log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
@@ -25,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)  # Fix logger name
 
 # Groq API configuration
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "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")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = "llama-3.2-1b-preview"
 
 # Define chunk size (LLaMA-3.1-8B has a ~8000 token context window)

@@ -6,7 +6,7 @@ __pycache__/
 *.so
 
 # Environment
-.env 
+.env
 .env.local
 .env.*.local
 
@@ -39,7 +39,7 @@ temp_uploads/
 # Thumbs.db
 
 # Project specific
-# stored_reports/
+stored_reports/
 # trace.log
 # normal_trace.log
 # saved_w.model

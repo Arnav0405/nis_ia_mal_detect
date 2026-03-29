@@ -116,12 +116,12 @@ class StaticAnalyzer:
             file_type = self.file_info['file_type']
             for type_key, analyzer in analyzers.items():
                 if type_key in file_type:
-                    self._timed_execution(analyzer, file_path, type_key)
+                    self._timed_execution(analyzer, file_path, name=type_key)
                     
             # Common analyses
             if self.yara_rules:
-                self._timed_execution(self._yara_scan, file_path, 'yara')
-            self._timed_execution(self._detailed_string_analysis, file_path, 'strings')
+                self._timed_execution(self._yara_scan, file_path, name='yara')
+            self._timed_execution(self._detailed_string_analysis, file_path, name='strings')
             
         except Exception as e:
             logger.error(f"Error analyzing file {file_path}: {e}")
@@ -284,6 +284,94 @@ class StaticAnalyzer:
         except Exception as e:
             self.file_info['analysis']['powershell'] = {'error': str(e)}
 
+    def _analyze_ole(self, file_path: str):
+        """Analyze OLE document structure and potential macro containers."""
+        ole_info = {'streams': [], 'macros': False}
+
+        try:
+            if not olefile:
+                raise ImportError("olefile module not available")
+
+            ole = olefile.OleFileIO(file_path)
+            ole_info['streams'] = ole.listdir()
+
+            macro_patterns = ['vba', 'macros', '_vba']
+            for stream in ole_info['streams']:
+                if any(pattern in str(stream).lower() for pattern in macro_patterns):
+                    ole_info['macros'] = True
+                    break
+
+            ole_info['suspicious'] = {
+                'encrypted': ole.is_encrypted(),
+                'suspicious_streams': []
+            }
+
+            suspicious_names = ['powerpoint document', 'equation native']
+            for stream in ole_info['streams']:
+                stream_name = '/'.join(stream).lower()
+                if any(name in stream_name for name in suspicious_names):
+                    ole_info['suspicious']['suspicious_streams'].append(stream_name)
+
+            ole.close()
+            self.file_info['analysis']['ole'] = ole_info
+
+        except Exception as e:
+            self.file_info['analysis']['ole'] = {'error': str(e)}
+
+    def _analyze_zip(self, file_path: str):
+        """Analyze zip archive contents for suspicious members."""
+        zip_info = {'entries': [], 'suspicious_entries': []}
+        suspicious_exts = {'.exe', '.dll', '.js', '.vbs', '.ps1', '.bat', '.cmd', '.scr'}
+
+        try:
+            with zipfile.ZipFile(file_path, 'r') as zf:
+                infos = zf.infolist()
+                zip_info['entries'] = [
+                    {
+                        'name': info.filename,
+                        'size': info.file_size,
+                        'compressed_size': info.compress_size,
+                    }
+                    for info in infos
+                ]
+
+                for info in infos:
+                    lower_name = info.filename.lower()
+                    ext = Path(lower_name).suffix
+                    if ext in suspicious_exts or lower_name.endswith('vbaproject.bin'):
+                        zip_info['suspicious_entries'].append(info.filename)
+
+            self.file_info['analysis']['zip'] = zip_info
+        except Exception as e:
+            self.file_info['analysis']['zip'] = {'error': str(e)}
+
+    def _analyze_sh(self, file_path: str):
+        """Basic shell script analysis for risky command patterns."""
+        sh_info = {'suspicious_commands': []}
+        patterns = [
+            'curl ',
+            'wget ',
+            'nc ',
+            'netcat ',
+            'chmod +x',
+            'bash -c',
+            '/dev/tcp/',
+            'mkfifo ',
+            'base64 -d',
+        ]
+
+        try:
+            with open(file_path, 'r', errors='ignore') as f:
+                content = f.read().lower()
+
+            for pattern in patterns:
+                if pattern in content:
+                    sh_info['suspicious_commands'].append(pattern.strip())
+
+            self.file_info['analysis']['shell_script'] = sh_info
+        except Exception as e:
+            self.file_info['analysis']['shell_script'] = {'error': str(e)}
+
     def _yara_scan(self, file_path: str):
         """Perform YARA rule scanning"""
         if not self.yara_rules:
@@ -377,7 +465,7 @@ class StaticAnalyzer:
             'sha256': sha256.hexdigest()
         }
 
-    def _load_yara_rules(self, rules_path: str) -> Optional[yara.Rules]:
+    def _load_yara_rules(self, rules_path: str):
         """Compile YARA rules from directory"""
         if not os.path.exists(rules_path):
             return None
