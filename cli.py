@@ -11,9 +11,11 @@ from pathlib import Path
 import json
 import os
 import subprocess
+import sys
 import time
 import shutil
 import typer
+import requests
 
 from byteconvert import file_to_bytes
 from report_generator import generate_report
@@ -137,11 +139,66 @@ def analyze_logs(logfile: Path = typer.Option(..., exists=True, help="Trace/log 
     typer.echo(json.dumps(res, indent=2))
 
 @app.command()
-def run_analysis(filename: str = typer.Option(..., help="Name of sample (in samples/) to run in docker sandbox")):
-    """Run Docker sandbox analysis (requires docker)"""
+def run_analysis(
+    filename: str = typer.Option(..., help="Name of sample (in samples/) to run in docker sandbox"),
+    use_api: bool = typer.Option(False, "--use-api", help="Use Flask API route instead")
+):
+    """Run Docker sandbox analysis (requires docker) or call the Flask API route."""
     sample = SAMPLE_DIR / filename
     if not sample.exists():
         raise typer.Exit(code=1, message=f"Sample {sample} not found in {SAMPLE_DIR}")
+
+    if use_api:
+        app_script = BASE / "app.py"
+        if not app_script.exists():
+            raise typer.Exit(code=1, message="Flask API script app.py not found")
+
+        typer.echo("Starting Flask API server...")
+        app_process = subprocess.Popen(
+            [sys.executable, str(app_script)],
+            cwd=str(BASE),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+
+        try:
+            url = "http://127.0.0.1:5000/api/run-analysis"
+            for attempt in range(20):
+                if app_process.poll() is not None:
+                    out, err = app_process.communicate(timeout=1)
+                    raise typer.Exit(code=1, message=f"Flask app exited early:\n{out}\n{err}")
+                try:
+                    resp = requests.post(url, json={"filename": filename}, timeout=30)
+                    resp.raise_for_status()
+                    typer.echo(json.dumps(resp.json(), indent=2))
+                    return
+                except requests.RequestException:
+                    time.sleep(1)
+            raise typer.Exit(code=1, message="Flask server failed to start or respond")
+        finally:
+            if app_process.poll() is None:
+                app_process.terminate()
+                time.sleep(2)
+                if app_process.poll() is None:
+                    app_process.kill()
+
+    # Check Docker daemon is available
+    try:
+        subprocess.run(["docker", "info"], capture_output=True, check=True)
+    except subprocess.CalledProcessError:
+        raise typer.Exit(code=1, message="Docker daemon not running")
+
+    # Build image if missing
+    check_img = subprocess.run(
+        ["docker", "images", "--format", "{{.Repository}}:{{.Tag}}", "malware-analysis:1.1"],
+        capture_output=True,
+        text=True,
+    )
+    if "malware-analysis:1.1" not in check_img.stdout:
+        typer.echo("Building malware-analysis image...")
+        subprocess.run(["docker", "build", "-t", "malware-analysis:1.1", "."], check=True)
+
     docker_cmd = [
         "docker", "run", "--rm", "--name", "malware-analysis",
         "--security-opt", "no-new-privileges=true",
@@ -151,18 +208,27 @@ def run_analysis(filename: str = typer.Option(..., help="Name of sample (in samp
         "--ulimit", "nofile=1024:1024", "--ulimit", "nproc=100:100",
         "--network=none", "--read-only",
         "--tmpfs", "/tmp:size=100m,mode=1777",
+        "--tmpfs", "/home/analyst/.wine:size=500m,mode=0700,uid=1000,gid=1000",
         "-v", f"{SAMPLE_DIR.absolute()}:/home/analyst/samples:ro",
         "-v", f"{OUTPUT_DIR.absolute()}:/home/analyst/output:rw",
         "malware-analysis:1.1",
         "bash", "-c", f'echo "{filename}" | /usr/local/bin/auto_analyze.sh'
     ]
+
     typer.echo("Executing docker (may take a while)...")
-    proc = subprocess.run(docker_cmd, capture_output=True, text=True)
-    typer.echo(proc.stdout)
-    if proc.returncode != 0:
-        typer.echo(proc.stderr, err=True)
+    p = subprocess.Popen(docker_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
+    for line in iter(p.stdout.readline, ''):
+        typer.echo(line, nl=False)
+    p.wait()
+    if p.returncode != 0:
         raise typer.Exit(code=1, message="Docker run failed")
     typer.echo("Docker analysis finished")
+
+    trace_path = OUTPUT_DIR / "trace.log"
+    if not trace_path.exists():
+        typer.echo("Warning: No trace.log generated in output/")
+    else:
+        typer.echo(f"Trace log saved: {trace_path}")
 
 @app.command()
 def history(limit: int = 20):
