@@ -1,0 +1,4 @@
+CreateProcessW
+WriteFile
+InternetOpenUrlW
+InternetOpenW

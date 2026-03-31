@@ -1,0 +1,1 @@
+/home/analyst/samples/6.exe: PE32 executable (GUI) Intel 80386, for MS Windows, 5 sections

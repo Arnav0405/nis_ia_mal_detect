@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/usr/bin/binwalk", line 25, in <module>
+    import binwalk
+  File "/usr/lib/python3.11/site-packages/binwalk/__init__.py", line 3, in <module>
+    from binwalk.core.module import Modules, ModuleException
+ModuleNotFoundError: No module named 'binwalk.core'

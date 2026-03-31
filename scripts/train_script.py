@@ -119,7 +119,7 @@ def train_xgboost_model(X_train, y_train, X_test, y_test):
     params = {
         'max_depth': 8,
         'learning_rate': 0.1,
-        'objective': 'multi:softmax',  # Multiclass classification
+        'objective': 'multi:softprob',  # Multiclass classification (returns probabilities)
         'num_class': num_classes,
         'subsample': 0.8,
         'colsample_bytree': 0.8,
@@ -170,7 +170,8 @@ def evaluate_model(model, X_test, y_test):
     print("=" * 70)
     
     dtest = xgb.DMatrix(X_test, label=y_test)
-    y_pred = model.predict(dtest).astype(np.int32)
+    predictions = model.predict(dtest)  # Shape: (num_samples, num_classes)
+    y_pred = np.argmax(predictions, axis=1).astype(np.int32)  # Get class with highest probability
     
     # Calculate metrics
     accuracy = accuracy_score(y_test, y_pred)

@@ -28,9 +28,9 @@ from scripts.static4 import StaticAnalyzer as CompleteAnalyzer
 
 app = typer.Typer()
 BASE = Path(__file__).resolve().parent
-SAMPLE_DIR = BASE.parent / "samples"
-OUTPUT_DIR = BASE.parent / "output"
-SCAN_HISTORY_DIR = BASE.parent / "scan_history"
+SAMPLE_DIR = BASE / "samples"
+OUTPUT_DIR = BASE / "output"
+SCAN_HISTORY_DIR = BASE / "scan_history"
 STORED_REPORTS = BASE / "stored_reports"
 for d in (SAMPLE_DIR, OUTPUT_DIR, SCAN_HISTORY_DIR, STORED_REPORTS):
     d.mkdir(parents=True, exist_ok=True)
@@ -58,9 +58,13 @@ def scan(
     save_report: bool = typer.Option(False, help="Save PDF report to stored_reports")
 ):
     """Run static analysis (and .bytes analysis)"""
-    typer.echo(f"Running {scan_type} analysis on {file}")
+    typer.echo()
+    typer.secho(f"🔍 Running {scan_type} analysis", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
+    typer.echo(f"File: {file}")
     if scan_type not in ANALYZERS:
-        raise typer.Exit(code=1, message="Invalid scan_type")
+        typer.secho(f"Error: Invalid scan_type '{scan_type}'", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
     analyzer_cls = ANALYZERS[scan_type]
     # Convert file to bytes
@@ -68,7 +72,8 @@ def scan(
     bytes_path.parent.mkdir(exist_ok=True, parents=True)
     ok = file_to_bytes(str(file), str(bytes_path))
     if not ok:
-        raise typer.Exit(code=1, message="Byte conversion failed")
+        typer.secho("Error: Byte conversion failed", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
     # Run analyzers
     analyzer = analyzer_cls(vt_api_key) if "vt_api_key" in analyzer_cls.__init__.__code__.co_varnames else analyzer_cls()
@@ -104,11 +109,13 @@ def scan(
         combined["report_path"] = str(report_path)
 
     history_file = _store_scan_history(combined)
-    typer.echo(f"Analysis complete. History stored at: {history_file}")
+    typer.echo()
+    typer.secho("✓ Analysis complete!", fg=typer.colors.GREEN, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
+    typer.echo(f"History file: {history_file}")
     if report_path:
-        typer.echo(f"Report saved: {report_path}")
-    else:
-        typer.echo(json.dumps(combined, indent=2))
+        typer.secho(f"Report saved:  {report_path}", fg=typer.colors.YELLOW)
+    typer.echo()
 
 @app.command()
 def classify(
@@ -123,20 +130,145 @@ def classify(
         bytes_path.parent.mkdir(exist_ok=True, parents=True)
         ok = file_to_bytes(str(file), str(bytes_path))
         if not ok:
-            raise typer.Exit(code=1, message="Byte conversion failed")
+            typer.secho("Error: Byte conversion failed", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
     else:
         bytes_path = file
 
-    typer.echo(f"Classifying {bytes_path} with model {model}")
+    typer.echo()
+    typer.secho(f"🤖 Classifying with XGBoost model", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
+    typer.echo(f"File: {bytes_path}")
+    typer.echo(f"Model: {model}")
+    typer.echo(f"Threshold: {threshold}")
+    
     res = classify_bytes_file(str(bytes_path), model_path=str(model), normal_threshold=threshold)
-    typer.echo(json.dumps(res, indent=2))
+    
+    if 'error' in res:
+        typer.secho(f"Error: {res['error']}", fg=typer.colors.RED, bold=True)
+    else:
+        typer.echo()
+        typer.secho("=" * 70, fg=typer.colors.CYAN)
+        typer.secho(" Malware Classification Result ".center(70, "*"), fg=typer.colors.CYAN, bold=True)
+        typer.secho("=" * 70, fg=typer.colors.CYAN)
+        typer.echo(f"File: {bytes_path}")
+        typer.secho("-" * 70, fg=typer.colors.CYAN)
+        
+        predicted = res['predicted_malware']
+        confidence = res['max_probability']
+        
+        if "Normal" in predicted:
+            typer.secho(f"Predicted: {predicted}", fg=typer.colors.GREEN, bold=True)
+            typer.secho("Confidence: Low (below threshold, likely normal)", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"Predicted: {predicted}", fg=typer.colors.RED, bold=True)
+            typer.secho(f"Confidence: {confidence:.4f}", fg=typer.colors.YELLOW, bold=True)
+        
+        typer.secho("-" * 70, fg=typer.colors.CYAN)
+        typer.echo("Class Probabilities:")
+        typer.secho("-" * 70, fg=typer.colors.CYAN)
+        
+        for malware_name, prob in res['probabilities'].items():
+            prob_str = f"{prob:.4f}" if prob > 0 else "N/A "
+            typer.echo(f"{malware_name:<70} | {prob_str}")
+        
+        typer.secho("=" * 70, fg=typer.colors.CYAN)
+        typer.echo()
 
 @app.command()
 def analyze_logs(logfile: Path = typer.Option(..., exists=True, help="Trace/log file to analyze")):
     """Analyze a trace/log file for behavioral indicators"""
-    typer.echo(f"Analyzing log: {logfile}")
+    typer.echo()
+    typer.secho(f"📊 Log Analysis Report", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 80, fg=typer.colors.CYAN)
+    typer.echo(f"File: {logfile}")
+    
     res = process_log_file(str(logfile))
-    typer.echo(json.dumps(res, indent=2))
+    
+    if not isinstance(res, dict):
+        typer.echo(json.dumps(res, indent=2))
+        return
+    
+    # Summary section
+    typer.echo()
+    typer.secho("📈 Summary", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 80, fg=typer.colors.CYAN)
+    typer.echo(f"Total Lines Analyzed:      {res.get('total_lines', 'N/A')}")
+    typer.echo(f"Flagged Events (%):        {res.get('flagged_percentage', 'N/A')}%")
+    typer.echo(f"Overall Confidence Score:  {res.get('confidence', 'N/A')}")
+    
+    # Suspicion verdict
+    is_suspicious = res.get('is_suspicious', False)
+    high_confidence = res.get('high_confidence', False)
+    
+    typer.echo()
+    if is_suspicious and high_confidence:
+        typer.secho("⚠️  VERDICT: SUSPICIOUS (High Confidence)", fg=typer.colors.RED, bold=True)
+    elif is_suspicious:
+        typer.secho("⚠️  VERDICT: SUSPICIOUS (Low Confidence)", fg=typer.colors.YELLOW, bold=True)
+    else:
+        typer.secho("✓ VERDICT: LIKELY BENIGN", fg=typer.colors.GREEN, bold=True)
+    
+    # Flag summary
+    flag_summary = res.get('flag_summary', {})
+    if flag_summary:
+        typer.echo()
+        typer.secho("🚩 Detected Flags", fg=typer.colors.BLUE, bold=True)
+        typer.secho("-" * 80, fg=typer.colors.CYAN)
+        for flag_type, count in sorted(flag_summary.items(), key=lambda x: x[1], reverse=True):
+            typer.echo(f"  {flag_type:<30} {count:>3} occurrences")
+    
+    # Suspicious flags (non-benign)
+    flags = res.get('flags', [])
+    suspicious_flags = [f for f in flags if not f.get('is_common_benign', False)]
+    
+    if suspicious_flags:
+        typer.echo()
+        typer.secho("🔴 High Priority Flags (Non-Benign)", fg=typer.colors.RED, bold=True)
+        typer.secho("-" * 80, fg=typer.colors.CYAN)
+        for flag in suspicious_flags[:10]:  # Show first 10
+            typer.secho(f"  • {flag.get('rule', 'unknown').upper()}", fg=typer.colors.YELLOW, bold=True)
+            typer.echo(f"    Description: {flag.get('description', 'N/A')}")
+            typer.echo(f"    Details: {flag.get('details', 'N/A')[:70]}...")
+            typer.echo(f"    Line: {flag.get('line', 'N/A')} | Weight: {flag.get('weight', 'N/A')}")
+            typer.echo()
+        
+        if len(suspicious_flags) > 10:
+            typer.secho(f"  ... and {len(suspicious_flags) - 10} more suspicious flags", fg=typer.colors.YELLOW)
+    
+    # Benign flags summary
+    benign_flags = [f for f in flags if f.get('is_common_benign', False)]
+    if benign_flags:
+        typer.echo()
+        typer.secho(f"ℹ️  Common Benign Flags", fg=typer.colors.CYAN, bold=True)
+        typer.secho("-" * 80, fg=typer.colors.CYAN)
+        typer.echo(f"Found {len(benign_flags)} common benign events (typically safe):")
+        benign_summary = {}
+        for f in benign_flags:
+            rule = f.get('rule', 'unknown')
+            benign_summary[rule] = benign_summary.get(rule, 0) + 1
+        for rule_type, count in sorted(benign_summary.items(), key=lambda x: x[1], reverse=True):
+            typer.echo(f"  • {rule_type}: {count} occurrences")
+    
+    # Recommendations
+    recommendations = res.get('recommendations', [])
+    if recommendations:
+        typer.echo()
+        typer.secho("💡 Recommendations", fg=typer.colors.BLUE, bold=True)
+        typer.secho("-" * 80, fg=typer.colors.CYAN)
+        for rec in recommendations:
+            typer.echo(f"  • {rec}")
+    
+    # Thresholds
+    thresholds = res.get('thresholds', {})
+    if thresholds:
+        typer.echo()
+        typer.secho("⚙️  Detection Thresholds", fg=typer.colors.CYAN)
+        typer.secho("-" * 80, fg=typer.colors.CYAN)
+        for key, val in thresholds.items():
+            typer.echo(f"  {key:<20} {val}")
+    
+    typer.echo()
 
 @app.command()
 def run_analysis(
@@ -144,16 +276,25 @@ def run_analysis(
     use_api: bool = typer.Option(False, "--use-api", help="Use Flask API route instead")
 ):
     """Run Docker sandbox analysis (requires docker) or call the Flask API route."""
+    # Extract just the filename (in case user passes path like "samples/file.exe")
+    filename = Path(filename).name
     sample = SAMPLE_DIR / filename
     if not sample.exists():
-        raise typer.Exit(code=1, message=f"Sample {sample} not found in {SAMPLE_DIR}")
+        typer.secho(f"Error: Sample {sample} not found in {SAMPLE_DIR}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+
+    typer.echo()
+    typer.secho(f"🔬 Malware Analysis - Docker Sandbox", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
+    typer.echo(f"Sample: {sample}")
 
     if use_api:
         app_script = BASE / "app.py"
         if not app_script.exists():
-            raise typer.Exit(code=1, message="Flask API script app.py not found")
+            typer.secho("Error: Flask API script app.py not found", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
 
-        typer.echo("Starting Flask API server...")
+        typer.secho("🚀 Starting Flask API server...", fg=typer.colors.BLUE)
         app_process = subprocess.Popen(
             [sys.executable, str(app_script)],
             cwd=str(BASE),
@@ -167,15 +308,21 @@ def run_analysis(
             for attempt in range(20):
                 if app_process.poll() is not None:
                     out, err = app_process.communicate(timeout=1)
-                    raise typer.Exit(code=1, message=f"Flask app exited early:\n{out}\n{err}")
+                    typer.secho(f"Error: Flask app exited early:\n{out}\n{err}", fg=typer.colors.RED, err=True)
+                    raise typer.Exit(code=1)
                 try:
                     resp = requests.post(url, json={"filename": filename}, timeout=30)
                     resp.raise_for_status()
+                    typer.echo()
+                    typer.secho("✓ Analysis Result", fg=typer.colors.GREEN, bold=True)
+                    typer.secho("-" * 70, fg=typer.colors.CYAN)
                     typer.echo(json.dumps(resp.json(), indent=2))
+                    typer.echo()
                     return
                 except requests.RequestException:
                     time.sleep(1)
-            raise typer.Exit(code=1, message="Flask server failed to start or respond")
+            typer.secho("Error: Flask server failed to start or respond", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1)
         finally:
             if app_process.poll() is None:
                 app_process.terminate()
@@ -187,7 +334,8 @@ def run_analysis(
     try:
         subprocess.run(["docker", "info"], capture_output=True, check=True)
     except subprocess.CalledProcessError:
-        raise typer.Exit(code=1, message="Docker daemon not running")
+        typer.secho("Error: Docker daemon not running", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
 
     # Build image if missing
     check_img = subprocess.run(
@@ -196,8 +344,9 @@ def run_analysis(
         text=True,
     )
     if "malware-analysis:1.1" not in check_img.stdout:
-        typer.echo("Building malware-analysis image...")
+        typer.secho("📦 Building malware-analysis image...", fg=typer.colors.YELLOW, bold=True)
         subprocess.run(["docker", "build", "-t", "malware-analysis:1.1", "."], check=True)
+        typer.secho("✓ Image built successfully", fg=typer.colors.GREEN)
 
     docker_cmd = [
         "docker", "run", "--rm", "--name", "malware-analysis",
@@ -215,36 +364,59 @@ def run_analysis(
         "bash", "-c", f'echo "{filename}" | /usr/local/bin/auto_analyze.sh'
     ]
 
-    typer.echo("Executing docker (may take a while)...")
+    typer.echo()
+    typer.secho("🐳 Executing docker sandbox...", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
     p = subprocess.Popen(docker_cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, universal_newlines=True)
     for line in iter(p.stdout.readline, ''):
-        typer.echo(line, nl=False)
+        typer.secho(f"  {line.rstrip()}", fg=typer.colors.WHITE)
     p.wait()
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
     if p.returncode != 0:
-        raise typer.Exit(code=1, message="Docker run failed")
-    typer.echo("Docker analysis finished")
+        typer.secho("✗ Docker run failed", fg=typer.colors.RED, bold=True)
+        raise typer.Exit(code=1)
+    typer.secho("✓ Docker analysis finished", fg=typer.colors.GREEN, bold=True)
 
     trace_path = OUTPUT_DIR / "trace.log"
     if not trace_path.exists():
-        typer.echo("Warning: No trace.log generated in output/")
+        typer.secho("⚠ Warning: No trace.log generated in output/", fg=typer.colors.YELLOW)
     else:
-        typer.echo(f"Trace log saved: {trace_path}")
+        typer.secho(f"📄 Trace log: {trace_path}", fg=typer.colors.GREEN)
+    typer.echo()
 
 @app.command()
 def history(limit: int = 20):
     """List recent scan history entries"""
     files = sorted(SCAN_HISTORY_DIR.glob("scan_*.json"), key=os.path.getmtime, reverse=True)[:limit]
+    if not files:
+        typer.secho("No scan history found", fg=typer.colors.YELLOW)
+        return
+    typer.echo()
+    typer.secho("📋 Scan History", fg=typer.colors.BLUE, bold=True)
+    typer.secho("-" * 110, fg=typer.colors.CYAN)
+    typer.secho(f"{'Scan ID':<25} {'Timestamp':<25} {'File':<60}", bold=True)
+    typer.secho("-" * 110, fg=typer.colors.CYAN)
     for f in files:
         data = json.loads(f.read_text())
-        print(f"{f.name} - {data.get('timestamp')} - {data.get('data', {}).get('file', '')}")
+        scan_id = data.get('scan_id', '')
+        timestamp = data.get('timestamp', '')
+        filename = data.get('data', {}).get('file', '')
+        typer.echo(f"{scan_id:<25} {timestamp:<25} {filename:<60}")
+    typer.secho("-" * 110, fg=typer.colors.CYAN)
+    typer.echo()
 
 @app.command()
 def get_report(filename: str):
     """Print path to stored report if present"""
     p = STORED_REPORTS / filename
     if not p.exists():
-        raise typer.Exit(code=1, message="Report not found")
-    typer.echo(str(p))
+        typer.secho(f"Error: Report not found: {filename}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.echo()
+    typer.secho("📄 Report Found", fg=typer.colors.GREEN, bold=True)
+    typer.secho("-" * 70, fg=typer.colors.CYAN)
+    typer.echo(f"Path: {p}")
+    typer.echo()
 
 if __name__ == "__main__":
     app()
