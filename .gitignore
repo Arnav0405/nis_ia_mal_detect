@@ -40,6 +40,7 @@ temp_uploads/
 
 # Project specific
 stored_reports/
+data/
 # trace.log
 # normal_trace.log
 # saved_w.model
