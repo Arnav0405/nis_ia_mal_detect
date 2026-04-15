@@ -6,6 +6,8 @@ RUN apk add --no-cache bash wine strace file coreutils grep python3 py3-pip && \
     pip3 install --no-cache-dir binwalk
 
 # Create user and directories
+# NOTE: Using a fixed UID (1000) for mounting volumes from the host system
+# Also note to avoid UID 1 because it is commonly used for the root/daemon user
 RUN adduser -D -u 1000 analyst && \
     mkdir -p /home/analyst/samples /home/analyst/output && \
     chown analyst:analyst /home/analyst/samples /home/analyst/output

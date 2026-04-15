@@ -361,7 +361,8 @@ def run_analysis(
         "-v", f"{SAMPLE_DIR.absolute()}:/home/analyst/samples:ro",
         "-v", f"{OUTPUT_DIR.absolute()}:/home/analyst/output:rw",
         "malware-analysis:1.1",
-        "bash", "-c", f'echo "{filename}" | /usr/local/bin/auto_analyze.sh'
+        # Sandbox script will be executed inside container, passing just the filename (not path)
+        "bash", "-c", f'/usr/local/bin/auto_analyze.sh {filename}'
     ]
 
     typer.echo()
